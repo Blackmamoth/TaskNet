@@ -1,0 +1,20 @@
+services:
+  tasknet-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "5500:5500"
+    environment:
+      - ENVIRONMENT=STAGING
+      - APP_HOST=0.0.0.0
+      - APP_PORT=${APP_PORT}
+      - APP_LOG_PATH=/usr/src/app
+      - APP_LOG_FILE=${APP_LOG_FILE}
+      - COCKROACH_DB_HOST=${COCKROACH_DB_HOST}
+      - COCKROACH_DB_PORT=${COCKROACH_DB_PORT}
+      - COCKROACH_DB_USER=${COCKROACH_DB_USER}
+      - COCKROACH_DB_PASS=${COCKROACH_DB_PASS}
+      - COCKROACH_DB_DBNAME=${COCKROACH_DB_DBNAME}
+    container_name: tasknet_backend
