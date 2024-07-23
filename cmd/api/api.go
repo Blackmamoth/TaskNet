@@ -6,6 +6,12 @@ import (
 	"time"
 
 	"github.com/blackmamoth/tasknet/pkg/config"
+	auth_handler "github.com/blackmamoth/tasknet/pkg/handlers/auth"
+	task_handler "github.com/blackmamoth/tasknet/pkg/handlers/task"
+	task_repository "github.com/blackmamoth/tasknet/pkg/repository/task"
+	user_repository "github.com/blackmamoth/tasknet/pkg/repository/user"
+	task_service "github.com/blackmamoth/tasknet/pkg/services/task"
+	user_service "github.com/blackmamoth/tasknet/pkg/services/user"
 	"github.com/blackmamoth/tasknet/pkg/utils"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -44,8 +50,10 @@ func (s *APIServer) Run() error {
 	}))
 
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		utils.SendAPIResponse(w, http.StatusOK, "Welcome to TaskNet the distributed task scheduler.", nil)
+		utils.SendAPIResponse(w, http.StatusOK, "Welcome to TaskNet the distributed task scheduler.")
 	})
+
+	r.Mount("/v1/api", s.registerRoutes())
 
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		utils.SendAPIErrorResponse(w, http.StatusNotFound, fmt.Errorf("route not found for [%s] %s", r.Method, r.URL.Path))
@@ -58,4 +66,21 @@ func (s *APIServer) Run() error {
 	config.Logger.INFO("Application running on port: %s", s.addr)
 
 	return http.ListenAndServe(fmt.Sprintf("%s:%s", s.host, s.addr), r)
+}
+
+func (s *APIServer) registerRoutes() *chi.Mux {
+	subRouter := chi.NewRouter()
+
+	userRepository := user_repository.New(s.conn)
+	userService := user_service.New(userRepository)
+	authHandler := auth_handler.New(userService)
+
+	taskRepository := task_repository.New(s.conn)
+	taskService := task_service.New(taskRepository)
+	taskHandler := task_handler.New(taskService, userService)
+
+	subRouter.Mount("/auth", authHandler.RegisterRoutes())
+	subRouter.Mount("/task", taskHandler.RegisterRoutes())
+
+	return subRouter
 }

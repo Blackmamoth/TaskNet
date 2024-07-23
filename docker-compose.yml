@@ -1,5 +1,5 @@
 services:
-  tasknet-backend:
+  tasknet_backend:
     build:
       context: .
       dockerfile: Dockerfile
@@ -18,3 +18,14 @@ services:
       - COCKROACH_DB_PASS=${COCKROACH_DB_PASS}
       - COCKROACH_DB_DBNAME=${COCKROACH_DB_DBNAME}
     container_name: tasknet_backend
+    depends_on:
+      - redis_instance
+
+  redis_instance:
+    image: redis:7.2.5-alpine
+    command: >
+      --requirepass ${REDIS_DB_PASS}
+    restart: always
+    ports:
+      - "6379:6379"
+    container_name: tasknet_redis_instance
