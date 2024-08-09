@@ -49,7 +49,7 @@ func (m *Middleware) VerifyRefreshToken(next http.Handler) http.Handler {
 			return
 		}
 
-		userId, ok := token.Get("id")
+		userId, ok := token.Get("user_id")
 		if !ok {
 			utils.SendAPIErrorResponse(w, http.StatusUnauthorized, fmt.Errorf("invalid refresh token"))
 			return

@@ -19,6 +19,9 @@ compose-build:
 compose-up: compose-build
 	@docker compose up -d
 
+compose-up-no-backend: compose-build
+	@docker compose up -d --scale tasknet_backend=0 
+
 compose-down:
 	@docker compose down
 

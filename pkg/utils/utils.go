@@ -2,9 +2,15 @@ package utils
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
+	"os"
+	"path/filepath"
 	"reflect"
 	"time"
 
@@ -34,9 +40,9 @@ func SendAPIResponse(w http.ResponseWriter, status int, data any, cookies ...*ht
 
 func SendAPIErrorResponse(w http.ResponseWriter, status int, err interface{}) {
 	if e, ok := err.(error); ok {
-		SendAPIResponse(w, status, e.Error())
+		SendAPIResponse(w, status, map[string]interface{}{"message": e.Error()})
 	} else {
-		SendAPIResponse(w, status, err)
+		SendAPIResponse(w, status, map[string]interface{}{"message": err})
 	}
 }
 
@@ -59,19 +65,27 @@ func generateMsgForField(fe validator.FieldError, v interface{}) (string, string
 
 	field, _ := t.FieldByName(fe.StructField())
 
-	jsonTag := field.Tag.Get("json")
+	aliasTag := field.Tag.Get("alias")
 
 	switch fe.Tag() {
 	case "required":
-		return jsonTag, fmt.Sprintf("\"%s\" is required", jsonTag)
+		return aliasTag, fmt.Sprintf("\"%s\" is required", aliasTag)
 	case "email":
-		return jsonTag, fmt.Sprintf("\"%s\" must be a valid email address", jsonTag)
+		return aliasTag, fmt.Sprintf("\"%s\" must be a valid email address", aliasTag)
 	case "min":
-		return jsonTag, fmt.Sprintf("\"%s\" should contain at least %s characters", jsonTag, fe.Param())
+		return aliasTag, fmt.Sprintf("\"%s\" should contain at least %s characters", aliasTag, fe.Param())
 	case "max":
-		return jsonTag, fmt.Sprintf("\"%s\" should contain at most %s characters", jsonTag, fe.Param())
+		return aliasTag, fmt.Sprintf("\"%s\" should contain at most %s characters", aliasTag, fe.Param())
 	case "dive":
-		return jsonTag, fmt.Sprintf("\"%s\" should be in an array", jsonTag)
+		return aliasTag, fmt.Sprintf("\"%s\" should be in an array", aliasTag)
+	case "oneof":
+		return aliasTag, fmt.Sprintf("\"%s\" should be one of [%s]", aliasTag, fe.Param())
+	case "alphanum":
+		return aliasTag, fmt.Sprintf("\"%s\" should be alpha numerical", aliasTag)
+	case "lowercase":
+		return aliasTag, fmt.Sprintf("\"%s\" should be all lower case", aliasTag)
+	case "uuid":
+		return aliasTag, fmt.Sprintf("\"%s\" should be a valid UUID", aliasTag)
 	}
 
 	return fe.Field(), fe.Error()
@@ -107,7 +121,7 @@ func calculateSecondsUntilEOD() (time.Time, time.Duration) {
 }
 
 func SignAccessToken(r *http.Request, userId string) (string, error) {
-	claims := map[string]interface{}{"id": userId, "remote_address": r.RemoteAddr}
+	claims := map[string]interface{}{"user_id": userId, "remote_address": r.RemoteAddr}
 
 	jwtauth.SetExpiry(claims, time.Now().Add(time.Minute*time.Duration(config.GlobalConfig.AppConfig.ACCESS_TOKEN_EXPIRY_IN_MINS)))
 	jwtauth.SetIssuedNow(claims)
@@ -117,7 +131,7 @@ func SignAccessToken(r *http.Request, userId string) (string, error) {
 }
 
 func SignRefreshToken(r *http.Request, userId string) (string, error) {
-	claims := map[string]interface{}{"id": userId, "remote_address": r.RemoteAddr}
+	claims := map[string]interface{}{"user_id": userId, "remote_address": r.RemoteAddr}
 
 	eodInSeconds, eodInDuration := calculateSecondsUntilEOD()
 	jwtauth.SetExpiry(claims, eodInSeconds)
@@ -131,4 +145,35 @@ func SignRefreshToken(r *http.Request, userId string) (string, error) {
 
 func GetRedisValue(key string) (string, error) {
 	return db.RedisClient.Get(context.Background(), key).Result()
+}
+
+func GenerateRandomHex(n int) (string, error) {
+	bytes := make([]byte, n)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
+}
+
+func SaveFile(file multipart.File, fileHeader *multipart.FileHeader) error {
+	dst, err := os.Create(filepath.Join(config.GlobalConfig.AppConfig.FILE_STORAGE_PATH, fileHeader.Filename))
+	if err != nil {
+		return fmt.Errorf("an error occured while saving your file to the server")
+	}
+
+	defer dst.Close()
+
+	_, err = io.Copy(dst, file)
+	return err
+}
+
+func GenerateRefreshTokenCookie(value string, expires time.Time) http.Cookie {
+	return http.Cookie{
+		Name:     config.GlobalConfig.AppConfig.REFRESH_TOKEN_NAME,
+		Value:    value,
+		Secure:   config.GlobalConfig.AppConfig.ENVIRONMENT == "PRODUCTION",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Expires:  expires,
+	}
 }
